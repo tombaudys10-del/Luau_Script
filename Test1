@@ -1,0 +1,65 @@
+local Tweenservice = game:GetService("TweenService")
+
+local SlowedTable = {}
+game.Players.PlayerAdded:Connect(function(plr)
+	plr.CharacterAdded:Connect(function(Chr)
+		local HRP = Chr:WaitForChild("HumanoidRootPart")
+		local Zone = Instance.new("Part",HRP)
+		Zone.Shape = "Ball"
+		Zone.Transparency = 0.2
+		Zone.Material = Enum.Material.ForceField
+		Zone.Massless = true
+		local Weld = Instance.new("WeldConstraint",Zone)
+		Weld.Part0 = HRP
+		Weld.Part1 = Zone
+		Zone.Size = Vector3.new(25,25,25)
+		Zone.CanCollide = false
+		Zone.CanQuery = false
+		Zone.Anchored = false
+		Zone.Position = HRP.Position
+		
+		local Goal = {
+			AssemblyLinearVelocity = Vector3.new(0,0,0),
+			AssemblyAngularVelocity = Vector3.new(0,0,0)
+		}
+		local Tweeninfo = TweenInfo.new(3,Enum.EasingStyle.Exponential)
+		
+		Zone.Touched:Connect(function(Hit)
+			if Hit.Name ~= "Fallable" or Hit.CollisionGroup ~= "Fallable" then return end
+			
+			
+			if table.find(SlowedTable,Hit) then return end
+			
+			table.insert(SlowedTable,Hit)
+			Hit.AssemblyLinearVelocity = Hit.AssemblyLinearVelocity.Unit * 10
+			Hit.AssemblyAngularVelocity = Hit.AssemblyAngularVelocity.Unit * 10
+			
+			local Tween = Tweenservice:Create(Hit,Tweeninfo,Goal)
+			
+			Tween:Play()
+			
+			Tween.Completed:Connect(function()
+				
+				Hit.CollisionGroup = "Default"
+				local HitRemoval = table.find(SlowedTable,Hit)
+				table.remove(SlowedTable,HitRemoval)
+				
+			end)
+			
+			
+			
+			
+		end)
+	end)
+end)
+
+while true do
+	task.wait(0.3)
+	local Fallable = Instance.new("Part",workspace)
+	Fallable.Name = "Fallable"
+	Fallable.CollisionGroup = "Fallable"
+	Fallable.Position = Vector3.new(math.random(-5,5),50,math.random(-5,5))
+	game.Debris:AddItem(Fallable,15)
+	
+	
+end
