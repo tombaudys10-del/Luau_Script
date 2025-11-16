@@ -1,0 +1,206 @@
+--[[ Hello! This is the main script
+	that should have around 200 lines
+	i commented out most of the stuff 
+	to make it easier to understand
+	
+	i had to make a few spaces for readability otherwise this would be a huge mess
+]]
+local Players = game:GetService("Players")
+local DebrisService = game:GetService("Debris")
+local Tweenservice = game:GetService("TweenService")
+
+
+
+
+local Plots = game.Workspace.Plots
+
+local SpawnZones = {} 
+-- Table to keep track of SpawnZones where the server should spawn collectables
+
+
+--- Setting up plots so that it doesnt have to be done manually
+for _,Plot in ipairs(Plots:GetChildren()) do
+	Plot:SetAttribute("Available",true)
+	Plot:SetAttribute("Ownership","")
+end
+
+for _,PlotsDescendant:Part in ipairs(Plots:GetDescendants()) do
+	if PlotsDescendant.Name == "SpawnZone" then
+		PlotsDescendant:SetAttribute("Multiplier",1)
+	end
+end
+
+-- function to keep track of where the server should spawn collectables
+local function UpdateSpawnZones()
+	table.clear(SpawnZones)
+	for _, PossibleSpawnZone in ipairs(Plots:GetDescendants()) do
+		if PossibleSpawnZone.Name == "SpawnZone" then
+			table.insert(SpawnZones,PossibleSpawnZone)
+		end
+	end
+end
+-- this function allows keeping track of the spawn zones
+-- this is important for "future" expansions
+local function CheckForOwner(Plot:Folder,Name:string) 
+	-- Function that checks if the plot is owned by the player
+	-- So that other players cant interfere with this player's plot
+	if Plot:GetAttribute("Ownership") == tostring(Name) then
+		return true
+	else
+		return false
+	end
+end
+
+local function CreateCollectionCircle(Chr:Model)
+	-- Spawn a circle to collect collectables
+	local CollectCircle = Instance.new("Part")
+	CollectCircle.Shape = Enum.PartType.Cylinder
+	CollectCircle.Size = Vector3.new(1,25,25)
+	CollectCircle.Orientation = Vector3.new(0,90,-90)
+	-- Set it relative to the character
+	local Hrp = Chr:FindFirstChild("HumanoidRootPart") -- Humanoid Root Part
+	CollectCircle.Parent = Hrp
+	CollectCircle.Position = Hrp.Position - Vector3.new(0,2,0)
+	CollectCircle.Massless = true -- does not interefere with character physics
+	-- Welding it so that it travels with the player
+	local Connection = Instance.new("WeldConstraint",CollectCircle)
+	Connection.Part1 = Hrp
+	Connection.Part0 = CollectCircle
+	CollectCircle.CanCollide = false
+	CollectCircle.Transparency = 0.75
+	-- returns CollectionCirle for future references
+	return CollectCircle
+	
+end
+
+-- setup players when they join
+Players.PlayerAdded:Connect(function(Plr) 
+	print(Plr.Name.." Has joined")
+	-- leaderstats
+	local leaderstats = Instance.new("Folder",Plr)
+	leaderstats.Name = "leaderstats"
+	local Cash = Instance.new("IntValue",leaderstats)
+	Cash.Name = "Cash"
+	Cash.Value = 0
+	Plr:SetAttribute("Multiplier",1) -- Multiplier for collectables
+	
+	
+
+	
+	-- Asign plots to freshly joined players
+	for _,Plot in ipairs(Plots:GetChildren()) do
+		if Plot:GetAttribute("Available") == true then
+			Plot:SetAttribute("Available", false)
+			Plot:SetAttribute("Ownership",tostring(Plr.Name))
+			print("Plot found for "..Plr.Name)
+			-- using atributes rather than instances because its faster
+			
+			UpdateSpawnZones()
+			
+			Plr.CharacterAdded:Connect(function(Chr) -- waits for Character
+				Chr:PivotTo(Plot:FindFirstChild("SpawnPoint").CFrame)
+				-- Teleports player to their plot
+				Chr.Humanoid.WalkSpeed = 32
+				-- getting collector tool
+				local Backpack = Plr:WaitForChild("Backpack")
+				local CollectorTool:Tool = Chr:FindFirstChildWhichIsA("Tool") or Backpack:FindFirstChildWhichIsA("Tool")
+				-- Tools can spawn in either locations when cloning from StartPack first so we check for both the backpack and the character
+				local CollectionCircle
+			
+				
+				CollectorTool.Equipped:Connect(function()
+
+					-- creats collection circle when tool is equipped
+					CollectionCircle = CreateCollectionCircle(Chr)
+					
+					CollectionCircle.Touched:Connect(function(Hit) -- Collecting Collectables
+						if Hit.Name ~= "Collectable" then return 
+						else 
+							if not Hit then return end -- Check because touched sometimes fires too fast
+							local Owner = CheckForOwner(Hit.Parent.Parent,Plr.Name)
+							-- Hit.parent.parent because Plot is alredy looped over and would index nil
+							if not Owner then return end
+							Cash.Value += (1 * Hit:GetAttribute("Multiplier") * Plr:GetAttribute("Multiplier"))
+							Hit:Destroy()
+							
+						end
+					end)
+				end)
+
+				
+				CollectorTool.Unequipped:Connect(function()
+					
+					-- destroys collection circle when tool is unequipped
+					CollectionCircle:Destroy()
+				end)
+			end)
+				local UpgradeTablet = Plot:FindFirstChild("UpgradeTablet")
+				local UpgradePrompt:ProximityPrompt = UpgradeTablet.Top.UpgradePrompt
+			
+			UpgradePrompt.Triggered:Connect(function(TriggerPlr) -- UpgradeMultiplier
+				local Owner = CheckForOwner(UpgradeTablet.Parent,TriggerPlr.Name)
+				if not Owner then return end
+				local Price:number = tonumber(UpgradePrompt.ActionText) -- Keeps the player informed of the price
+				if Cash.Value > Price then 
+					Cash.Value -= Price
+					Plr:SetAttribute("Multiplier",Plr:GetAttribute("Multiplier") *2)
+					print(TriggerPlr.Name.."Has upgraded")
+				end
+			end)
+			
+			return 
+		
+		end
+	end
+end)
+-- Clears plots for fresh players
+Players.PlayerRemoving:Connect(function(Plr)
+	for _,Plot in ipairs(Plots:GetChildren()) do
+		if Plot:GetAttribute("Ownership") == tostring(Plr.Name) then
+			Plot:SetAttribute("Available", true)
+			Plot:SetAttribute("Ownership","")
+			print(Plr.Name.."'s plot has been cleared")
+			
+			
+		end	
+	end 	
+end)
+
+
+local Tweeninfo = TweenInfo.new(2,Enum.EasingStyle.Quad)
+-- using same tweeninfo for all collectables
+local Cooldown = 0.5 
+-- Waiting time in between collectables spawning
+while true do -- Spawn Collectables
+	task.wait(Cooldown)
+	
+	for _,SpawnZone:Part in ipairs(SpawnZones) do
+		local Collectable = Instance.new("Part",SpawnZone.Parent.Collectables)
+		Collectable:SetAttribute("Multiplier",SpawnZone:GetAttribute("Multiplier"))
+		-- set multiplier attribute to the multiplier of the spawnzone 
+		-- Allows for expandable zones with different values for their collectables
+		Collectable.Name = "Collectable"
+		Collectable.Size = Vector3.new(2,2,2) -- square size
+		Collectable.BrickColor = BrickColor.random() -- random brickcolor for randomness
+		Collectable.Anchored = true
+		Collectable.CanCollide = false
+		local Radius = Vector3.new(math.random(0,SpawnZone.Size.X),math.random(0,SpawnZone.Size.Y),math.random(0,SpawnZone.Size.Z)) /2
+		
+		-- Spawn Them in
+		Collectable.Position = SpawnZone.Position + Radius + Vector3.new(0,5,0) -- above the spawn zone
+		-- Smoothly fall down to spawn zone
+		local Goal = {
+			Position = SpawnZone.Position + Radius + Vector3.new(0,1.5,0)
+		}
+		local Tween = Tweenservice:Create(Collectable,Tweeninfo,Goal)
+		Tween:Play()
+		DebrisService:AddItem(Collectable,30) 
+		-- lifetime of 30 seconds
+		--Debris has a hardcoded maximum of 1,000 objects which prevents lag if too many collectables were to spawn
+	end
+	
+end
+--[[ Summary = each player is assigned a plot where they can collect their own and only their own collectables(preventing stealing) using their collector tool 
+which makes a 3D range around them that awards them coins by collecting collectables using it. Multipliers can be upgraded through a tablet ingame.]]
+
+
