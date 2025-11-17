@@ -1,21 +1,18 @@
---[[ Hello! This is the main script
-	that should have around 200 lines
-	i commented out most of the stuff 
-	to make it easier to understand
-	
-	i had to make a few spaces for readability otherwise this would be a huge mess
-]]
 local Players = game:GetService("Players")
 local DebrisService = game:GetService("Debris")
 local Tweenservice = game:GetService("TweenService")
+local DataStoreService = game:GetService("DataStoreService")
+-- Getting services for later use
 
-
-
-
+local CoinsDataStore = DataStoreService:GetDataStore("CoinsDataStore")
+local MultiplierDataStore = DataStoreService:GetDataStore("MultiplierDataStore")
 local Plots = game.Workspace.Plots
 
-local SpawnZones = {} 
--- Table to keep track of SpawnZones where the server should spawn collectables
+local SpawnZones = {}
+
+
+
+
 
 
 --- Setting up plots so that it doesnt have to be done manually
@@ -39,8 +36,7 @@ local function UpdateSpawnZones()
 		end
 	end
 end
--- this function allows keeping track of the spawn zones
--- this is important for "future" expansions
+
 local function CheckForOwner(Plot:Folder,Name:string) 
 	-- Function that checks if the plot is owned by the player
 	-- So that other players cant interfere with this player's plot
@@ -58,10 +54,10 @@ local function CreateCollectionCircle(Chr:Model)
 	CollectCircle.Size = Vector3.new(1,25,25)
 	CollectCircle.Orientation = Vector3.new(0,90,-90)
 	-- Set it relative to the character
-	local Hrp = Chr:FindFirstChild("HumanoidRootPart") -- Humanoid Root Part
+	local Hrp = Chr:FindFirstChild("HumanoidRootPart")
 	CollectCircle.Parent = Hrp
 	CollectCircle.Position = Hrp.Position - Vector3.new(0,2,0)
-	CollectCircle.Massless = true -- does not interefere with character physics
+	CollectCircle.Massless = true
 	-- Welding it so that it travels with the player
 	local Connection = Instance.new("WeldConstraint",CollectCircle)
 	Connection.Part1 = Hrp
@@ -75,7 +71,6 @@ end
 
 -- setup players when they join
 Players.PlayerAdded:Connect(function(Plr) 
-	print(Plr.Name.." Has joined")
 	-- leaderstats
 	local leaderstats = Instance.new("Folder",Plr)
 	leaderstats.Name = "leaderstats"
@@ -84,8 +79,27 @@ Players.PlayerAdded:Connect(function(Plr)
 	Cash.Value = 0
 	Plr:SetAttribute("Multiplier",1) -- Multiplier for collectables
 	
+	local DatastoreKey = tostring(Plr.UserId)
+	local Succes,CoinsData = pcall(function()
+		return CoinsDataStore:GetAsync(DatastoreKey)
+	end)
 	
-
+	if Succes then
+		Cash.Value = CoinsData
+	else
+		warn("Failed to load data for "..Plr.Name)
+	end
+	
+	local Success, MultiplierData = pcall(function()
+		return MultiplierDataStore:GetAsync(DatastoreKey)
+	end)
+	
+	if Success then
+		Plr:SetAttribute("Multiplier",MultiplierData)
+	else
+		warn("Failed to load data for "..Plr.Name)
+	end
+	
 	
 	-- Asign plots to freshly joined players
 	for _,Plot in ipairs(Plots:GetChildren()) do
@@ -106,7 +120,9 @@ Players.PlayerAdded:Connect(function(Plr)
 				local CollectorTool:Tool = Chr:FindFirstChildWhichIsA("Tool") or Backpack:FindFirstChildWhichIsA("Tool")
 				-- Tools can spawn in either locations when cloning from StartPack first so we check for both the backpack and the character
 				local CollectionCircle
-			
+				
+				
+				
 				
 				CollectorTool.Equipped:Connect(function()
 
@@ -126,9 +142,11 @@ Players.PlayerAdded:Connect(function(Plr)
 						end
 					end)
 				end)
-
+				
 				
 				CollectorTool.Unequipped:Connect(function()
+					
+					
 					
 					-- destroys collection circle when tool is unequipped
 					CollectionCircle:Destroy()
@@ -144,7 +162,6 @@ Players.PlayerAdded:Connect(function(Plr)
 				if Cash.Value > Price then 
 					Cash.Value -= Price
 					Plr:SetAttribute("Multiplier",Plr:GetAttribute("Multiplier") *2)
-					print(TriggerPlr.Name.."Has upgraded")
 				end
 			end)
 			
@@ -161,18 +178,22 @@ Players.PlayerRemoving:Connect(function(Plr)
 			Plot:SetAttribute("Ownership","")
 			print(Plr.Name.."'s plot has been cleared")
 			
+			local Key = tostring(Plr.UserId)
 			
+			CoinsDataStore:SetAsync(Key,Plr.leaderstats.Cash.Value)
+			MultiplierDataStore:SetAsync(Key,Plr:GetAttribute("Multiplier"))
 		end	
 	end 	
 end)
 
 
+
+
 local Tweeninfo = TweenInfo.new(2,Enum.EasingStyle.Quad)
 -- using same tweeninfo for all collectables
-local Cooldown = 0.5 
--- Waiting time in between collectables spawning
+
 while true do -- Spawn Collectables
-	task.wait(Cooldown)
+	task.wait(0.5)
 	
 	for _,SpawnZone:Part in ipairs(SpawnZones) do
 		local Collectable = Instance.new("Part",SpawnZone.Parent.Collectables)
@@ -189,18 +210,11 @@ while true do -- Spawn Collectables
 		-- Spawn Them in
 		Collectable.Position = SpawnZone.Position + Radius + Vector3.new(0,5,0) -- above the spawn zone
 		-- Smoothly fall down to spawn zone
-		local Goal = {
-			Position = SpawnZone.Position + Radius + Vector3.new(0,1.5,0)
-		}
+		local Goal = {Position = SpawnZone.Position + Radius + Vector3.new(0,1.5,0)}
 		local Tween = Tweenservice:Create(Collectable,Tweeninfo,Goal)
 		Tween:Play()
-		DebrisService:AddItem(Collectable,30) 
-		-- lifetime of 30 seconds
+		DebrisService:AddItem(Collectable,30) -- lifetime of 33 seconds
 		--Debris has a hardcoded maximum of 1,000 objects which prevents lag if too many collectables were to spawn
 	end
 	
 end
---[[ Summary = each player is assigned a plot where they can collect their own and only their own collectables(preventing stealing) using their collector tool 
-which makes a 3D range around them that awards them coins by collecting collectables using it. Multipliers can be upgraded through a tablet ingame.]]
-
-
